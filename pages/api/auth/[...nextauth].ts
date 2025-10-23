@@ -1,3 +1,4 @@
+// pages/api/auth/[...nextauth].ts
 import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
@@ -5,6 +6,13 @@ import { PrismaClient } from "@prisma/client";
 import { compare } from "bcryptjs";
 
 const prisma = new PrismaClient();
+
+/**
+ * NOTE:
+ * - NextAuth به‌طور پیش‌فرض انتظار دارد user.id از نوع string باشد.
+ * - بنابراین در authorize مقدار id را به string تبدیل می‌کنیم.
+ * - در callbacks هم id را به‌صورت string در token/session نگه می‌داریم.
+ */
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -27,8 +35,9 @@ export const authOptions: NextAuthOptions = {
         const isValid = await compare(credentials.password, user.password);
         if (!isValid) return null;
 
+        // تبدیل id به string برای سازگاری با تایپ‌های NextAuth
         return {
-          id: user.id,
+          id: String(user.id),
           name: user.name,
           email: user.email,
         };
@@ -42,15 +51,23 @@ export const authOptions: NextAuthOptions = {
     signIn: "/auth/SignIn",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    /**
+     * در اینجا از any برای token/user استفاده شده تا تایپ‌‌ها ساده و امن بمانند.
+     * در پروژه بزرگ‌تر می‌توانی تایپ‌های سفارشی تعریف کنی.
+     */
+    async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
+        // user.id الان string است
         token.id = user.id;
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: any }) {
       if (token) {
-        session.user.id = token.id as number;
+        // نگهداری id به صورت string در session.user.id
+        // اگر در فرانت‌اند نیاز به number داری، اینجا Number(token.id) کن
+        session.user = session.user ?? {};
+        session.user.id = token.id as string;
       }
       return session;
     },
